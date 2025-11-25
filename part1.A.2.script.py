@@ -24,18 +24,6 @@ N_OUTPUTS = F_eqn.rows
 
 full_tf = x_eqn.inv() @ F_eqn
 
-# %%
-subs_dict = {
-    m1: 2,
-    m2: 0.2,
-    m3: 0.03,
-    k1: 1e4,
-    k2: 3e4,
-    k3: 4e4,
-    c1: 0.1,
-    c2: 0.1,
-    c3: 0.1,
-}
 
 # %% [markdown]
 # Demonstrate that all elements are rational functions and the denominator is the same:
@@ -62,6 +50,19 @@ if not error:
 # Print out all the transfer functions as Latex, evaluated
 
 # %%
+subs_dict = {
+    m1: 2,
+    m2: 0.2,
+    m3: 0.03,
+    k1: 1e4,
+    k2: 3e4,
+    k3: 4e4,
+    c1: 0.1,
+    c2: 0.1,
+    c3: 0.1,
+}
+full_tf_eval = full_tf.subs(subs_dict)
+
 # Divide out constant term in denominator to normalize 
 ref_constant = reference_denom.subs(subs_dict).as_poly(s).all_coeffs()[-1]
 
@@ -70,19 +71,12 @@ print(sp.latex(reference_denom.subs(subs_dict) / ref_constant))
 
 for out_i in range(N_OUTPUTS):
     for in_i in range(N_INPUTS):
-        numer = sp.collect(full_tf[out_i, in_i], s).as_numer_denom()[0]
+        numer = sp.collect(full_tf_eval[out_i, in_i], s).as_numer_denom()[0]
         print(f"Numerator G{out_i+1}{in_i+1}:")
-        print(sp.latex(numer.subs(subs_dict) / ref_constant ))
+        print(sp.latex(numer / ref_constant ))
 
 # %% [markdown]
 # Convert into control TransferFunction - use Sympy to get everything in to polynomials for numerator + denominator:
-
-# %%
-numer, denom = sp.collect(full_tf[0, 0].subs(subs_dict), s).as_numer_denom()
-numer.as_poly(s)
-
-# %%
-numer.as_poly(s).all_coeffs()  # in order of descending powers
 
 # %%
 all_tfs = []
@@ -90,7 +84,7 @@ for out_i in range(N_OUTPUTS):
     tfs_row = []
     for in_i in range(N_INPUTS):
         numer, denom = sp.collect(
-            full_tf[out_i, in_i].subs(subs_dict), s
+            full_tf_eval[out_i, in_i], s
         ).as_numer_denom()
         numer_coeffs = [float(obj) for obj in numer.as_poly(s).all_coeffs()]
         denom_coeffs = [float(obj) for obj in denom.as_poly(s).all_coeffs()]
