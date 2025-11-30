@@ -11,13 +11,33 @@ m1, m2, m3, k1, k2, k3, c1, c2, c3, F1, F2, F3 = sp.symbols(
 s = sp.symbols("s")
 
 F_eqn = sp.Matrix([[1, -1], [0, 1], [0, 0]])
-x_eqn = sp.Matrix(
+
+mass_matrix = sp.Matrix([[m1, 0, 0], [0, m2, 0], [0, 0, m3]])
+damping_matrix = sp.Matrix(
     [
-        [m1 * s**2 + (c1 + c2) * s + (k1 + k2), -c2 * s - k2, 0],
-        [-c2 * s - k2, m2 * s**2 + (c2 + c3) * s + (k2 + k3), -c3 * s - k3],
-        [0, -c3 * s - k3, m3 * s**2 + c3 * s + k3],
+        [c1 + c2, -c2, 0],
+        [-c2, c2 + c3, -c3],
+        [0, -c3, c3],
     ]
 )
+stiffness_matrix = sp.Matrix(
+    [
+        [k1 + k2, -k2, 0],
+        [-k2, k2 + k3, -k3],
+        [0, -k3, k3],
+    ]
+)
+print("Mass matrix: ")
+sp.print_latex(mass_matrix)
+print("Damping matrix: ")
+sp.print_latex(damping_matrix)
+print("stiffness matrix: ")
+sp.print_latex(stiffness_matrix)
+print("Force matrix: ")
+sp.print_latex(F_eqn)
+print("\n\n")
+
+x_eqn = mass_matrix * s ** 2 + damping_matrix * s + stiffness_matrix
 
 N_INPUTS = F_eqn.cols
 N_OUTPUTS = F_eqn.rows
@@ -73,7 +93,7 @@ for out_i in range(N_OUTPUTS):
     for in_i in range(N_INPUTS):
         numer = sp.collect(full_tf_eval[out_i, in_i], s).as_numer_denom()[0]
         print(f"Numerator G{out_i+1}{in_i+1}:")
-        print(sp.latex(numer / ref_constant ))
+        sp.print_latex(numer / ref_constant)
 
 # %% [markdown]
 # Convert into control TransferFunction - use Sympy to get everything in to polynomials for numerator + denominator:
@@ -134,14 +154,14 @@ for out_i in range(N_OUTPUTS):
 
         # mag_dB = 20 * np.log10(magnitude[out_i, in_i])
         freq = omega / (2 * pi)  # convert to Hz
-        phase_deg = phase[out_i, in_i] * (180 / np.pi)
+        phase_deg = np.unwrap(phase[out_i, in_i]) * (180 / np.pi)
         ax_mag.loglog(freq, magnitude[out_i, in_i])
         ax_phase.semilogx(freq, phase_deg)
 
         ax_mag.grid(which="both")
         ax_phase.grid(which="both")
-        ax_mag.set_ylabel(f"|G{out_i+1}{in_i+1}(jω)|")
-        ax_phase.set_ylabel(f"∠G{out_i+1}{in_i+1}(jω) [deg]")
+        ax_mag.set_ylabel(f"|$G_{{{out_i+1}{in_i+1}}}$(jω)|")
+        ax_phase.set_ylabel(f"∠$G_{{{out_i+1}{in_i+1}}}$(jω) [deg]")
 
         # Set phase Y-ticks to be multiples of 90 degrees
         ylim = ax_phase.get_ylim()  # setting ticks changes limits

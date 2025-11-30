@@ -5,8 +5,7 @@ Modal analysis
 import numpy as np
 import control as ct
 import sympy as sp
-from numpy import pi, linalg as LA
-import matplotlib.pyplot as plt
+from numpy import linalg as LA
 
 
 # Define constants
@@ -42,7 +41,7 @@ eigvals, eigvecs = LA.eig(LA.inv(mass_matrix) @ stiffness_matrix)
 # print(f"{eigvals=}")
 print(f"{eigvecs=}")
 
-phi_to_x = eigvecs  # conversion from modal coordinates to [x1, x2, x3]
+phi_to_x = eigvecs # conversion from modal coordinates to [x1, x2, x3]
 modal_mass = phi_to_x.T @ mass_matrix @ phi_to_x
 modal_damping = phi_to_x.T @ damping_matrix @ phi_to_x
 modal_stiffness = phi_to_x.T @ stiffness_matrix @ phi_to_x
@@ -53,11 +52,9 @@ assert np.isclose(modal_stiffness, np.diag(np.diag(modal_stiffness))).all()
 
 modal_mass = np.diag(modal_mass)
 modal_stiffness = np.diag(modal_stiffness)
-modal_damping = np.diag(modal_damping)  # ignore off-diagonal terms
+modal_damping = np.diag(modal_damping) # ignore off-diagonal terms
 
-modal_tfs = np.array(
-    [ct.tf([1], [m, 0, k]) for m, k in zip(modal_mass, modal_stiffness)]
-)
+modal_tfs = np.array([ct.tf([1], [m, c, k]) for m, c, k in zip(modal_mass, modal_damping, modal_stiffness)])
 
 forces = np.array([[1, 0, 0], [-1, 1, 0]]).T
 # warning - associativity is no joke; at least one of these parentheses is load bearing
@@ -71,9 +68,9 @@ print(f"Gij denominator: ")
 print(common_den / common_den[-1])
 for out_i in range(N_OUTPUTS):
     for in_i in range(N_INPUTS):
-        print(f"\n\n====================")
+        print(f"\n\n====================\n")
         print(f"G{out_i}{in_i} numerator:")
-
+        
         # Normalize so constant term in denominator is 1
         num = np.squeeze(np.array(sys[out_i, in_i].num))
         den = np.squeeze(np.array(sys[out_i, in_i].den))
@@ -81,44 +78,8 @@ for out_i in range(N_OUTPUTS):
             raise RuntimeError(f"Unequal denominators {out_i=} {in_i=}")
 
         den_const = den[-1]
+        
+        print(num/den_const)
 
-        print(num / den_const)
 
-# Section A.4 =============================
-# Section A.4 =============================
-# Section A.4 =============================
 
-# Plot contributions from each mode, to G11 and G21
-freq_min = 1
-freq_max = 1e6
-N_POINTS_PER_DECADE = 100
-N_POINTS = int(np.log10(freq_max / freq_min) * N_POINTS_PER_DECADE)
-freq = np.geomspace(freq_min, freq_max, N_POINTS + 1)
-omega = freq * 2 * pi
-
-# G11
-for out_i in [0, 1]:  # output index (x1 and x2)
-    in_i = 0  # input index (f1)
-
-    fig, ax = plt.subplots()
-
-    def add_plot(sys_tf, **plot_kwargs):
-        mag, phase, _ = ct.frequency_response(sys_tf, omega)
-        ax.loglog(freq, mag, **plot_kwargs)
-
-    # shape (N_MODES, N_INPUTS)
-    mode_contributions = modal_tfs[:, None] * (phi_to_x.T @ forces)
-    mode_colors = ["red", "green", "blue"]
-
-    for mode_i in range(3):
-        mode_contribution = phi_to_x[out_i, mode_i] * mode_contributions[mode_i, in_i]
-        add_plot(mode_contribution, label=f"Mode {mode_i}", color=mode_colors[mode_i])
-
-    add_plot(sys[out_i, in_i], label="Total", color="black")
-    ax.grid()
-    ax.legend()
-    ax.set_xlim(freq_min, freq_max)
-
-    fig.set_size_inches(6, 4)
-    fig.savefig(f"img/part.A.4.G{out_i}{in_i}.png", bbox_inches='tight')
-    plt.show()
