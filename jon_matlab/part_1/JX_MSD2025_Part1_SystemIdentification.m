@@ -4,10 +4,13 @@
 %% Define parameters for chirp signal
 
 fmin = 10; % Start Frequency (in Hz)
-fmax = 1e5; % Max Frequency in Chirp (in Hz)
+fmax = 1e4; % Max Frequency in Chirp (in Hz)
 
 fs = 10*fmax; % sampling frequency (in Hz)
-ts = 1.0/fs; % Sampling Time (in seconds)
+ts = 1.0/fs;
+
+%ts = 30e-6; % Sampling Time (in seconds)
+%fs = 1.0/ts;
 
 totaltime = 10; % in seconds
 t = 0:ts:totaltime; % Time vector
@@ -20,6 +23,25 @@ tmax = t(end); % Time of chirp signal
 % Define chirp method
 method = 'logarithmic'; % or 'logarithmic'
 u = chirp(t, fmin, tmax, fmax, method); % Generate a chirp signal
+
+%% Multi Chirp
+fmin = 10;   
+fmax = 1e4;
+ts = 30e-6;              
+fs = 1/ts;
+
+totaltime = 10;      % total time duration
+t = 0:ts:totaltime;
+
+n_chirp = 1;                                 % number of chirps
+chirp_time = totaltime/n_chirp;              % each chirp duration
+t_single = 0:ts:chirp_time;                  % time for one chirp
+
+method = 'logarithmic';
+u_single = chirp(t_single, fmin, t_single(end), fmax, method);
+
+u = repmat(u_single, 1, n_chirp);            % repeat chirps
+u = u(1:length(t));                          % ensure same length
 
 %% Define the white noise (realisitic with normal distribution)
 vr = 10; % Define variance
@@ -54,8 +76,8 @@ y = Plant(u, t); % Process the chirp signal through the system
 figure(1);clf(1);
 subplot(2, 1, 1);
 plot(t, u);
-title(sprintf('Input White Noise Signal, fmin = %d , fmax = %.e, vr = %d', fmin, fmax,vr));
-% title(sprintf('Input Chirp Signal, fmin = %d , fmax = %.e', fmin, fmax));
+% title(sprintf('Input White Noise Signal, fmin = %d , fmax = %.e, vr = %d', fmin, fmax,vr));
+title(sprintf('Input Chirp Signal, fmin = %d , fmax = %.e', fmin, fmax));
 xlabel('Time (s)');
 ylabel('Amplitude');
 
@@ -72,7 +94,7 @@ output = y;
 ft = logspace(max(-1,log10(fmin)),max(3,log10(fmax)),1000); % Define frequency vector data set
 % Estimate Frequency Response using tfestimate()
 
-n_win = 8;            
+n_win = 1;            
 percent_overlap = 0.5;
 
 win_length = round(length(u)/n_win);
@@ -84,12 +106,13 @@ n_overlap = floor(win_length*percent_overlap);        % 50% overlap
   
 figure(2);clf(2);
 subplot(3,1,1);semilogx(f,mag2db(abs(T)));
-title(sprintf('tfestimate from white noise, hanning window, num windows = %d, overlap = %0.2f', n_win, percent_overlap));
+title(sprintf('tfestimate from chirp, hanning window, num windows = %d, overlap = %0.2f', n_win, percent_overlap));
 xlabel('Freq [Hz]'); ylabel('|G| [dB]'); grid on; hold on;
 subplot(3,1,2);semilogx(f,rad2deg(angle(T)))
 xlabel('Freq [Hz]'); ylabel('\angleG [dB]'); grid on; hold on;
 subplot(3,1,3);semilogx(f,C)
 xlabel('Freq [Hz]'); ylabel('Coherence'); grid on; hold on;
+%ylim([0.95 1.05]);
 
 %% Regular System Identification
 ft = logspace(max(-1,log10(fmin)),max(3,log10(fmax)),1000); % Define frequency vector data set
@@ -183,7 +206,7 @@ legend('FRD data input','tfest with delay','tfest without delay');
 %legend('tfest model','tfest + delay','FRD');
 title(sprintf('Bode Plot with Time Delay = %.1e s',iodelay));
 
-%% Original Continuous Time Transfer Function
+%% OLD Continuous Time Transfer Function
 
 % Generate data file to be used in tfest() function
 %data = iddata(output,input,ts); %Make Input-Output Data
