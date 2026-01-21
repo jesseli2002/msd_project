@@ -5,3 +5,9 @@ tmp
 .vscode
 *.pdf
 *.pptx
+*.mat
+slides
+img2
+img3
+__pycache__
+Plant.pdf

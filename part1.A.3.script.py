@@ -12,7 +12,7 @@ import matplotlib.patches as patches
 # Define constants
 m1 = 2
 m2 = 0.2
-m3 = 0.03
+m3 = 0.05
 k1 = 1e4
 k2 = 3e4
 k3 = 4e4
@@ -68,6 +68,7 @@ sys = phi_to_x @ (modal_tfs[:, None] * (phi_to_x.T @ forces))
 N_OUTPUTS = sys.shape[0]
 N_INPUTS = sys.shape[1]
 
+np.set_printoptions(precision=4)
 common_den = np.squeeze(np.array(sys[0, 0].den))
 print(f"Gij denominator: ")
 print(common_den / common_den[-1])
@@ -230,7 +231,7 @@ for out_i in [0, 1]:  # output index (x1 and x2)
         mode_contribution = phi_to_x[out_i, mode_i] * mode_contributions[mode_i, in_i]
         add_plot(mode_contribution, label=f"Mode {mode_i + 1}", color=mode_colors[mode_i])
 
-    add_plot(sys_damp[out_i, in_i], label="Total", color="black", alpha=0.6)
+    add_plot(sys_damp[out_i, in_i], label="Total", color="black", alpha=0.7, linestyle='--')
     ax_mag.grid()
     ax_phase.grid()
     ax_mag.legend()

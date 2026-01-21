@@ -82,7 +82,7 @@ if not error:
 subs_dict = {
     m1: 2,
     m2: 0.2,
-    m3: 0.03,
+    m3: 0.05,
     k1: 1e4,
     k2: 3e4,
     k3: 4e4,
@@ -161,15 +161,17 @@ for out_i in range(N_OUTPUTS):
         ax_mag = ax[out_i * 2, in_i]
         ax_phase = ax[out_i * 2 + 1, in_i]
 
-        # mag_dB = 20 * np.log10(magnitude[out_i, in_i])
+        mag_dB = 20 * np.log10(magnitude[out_i, in_i])
         freq = omega / (2 * pi)  # convert to Hz
         phase_deg = np.unwrap(phase[out_i, in_i]) * (180 / np.pi)
         ax_mag.loglog(freq, magnitude[out_i, in_i])
+        # ax_mag.semilogx(freq, mag_dB)
         ax_phase.semilogx(freq, phase_deg)
 
         ax_mag.grid(which="both")
         ax_phase.grid(which="both")
         ax_mag.set_ylabel(f"|$G_{{{out_i+1}{in_i+1}}}$(jω)|")
+        # ax_mag.set_ylabel(f"|$G_{{{out_i+1}{in_i+1}}}$(jω)| [dB]")
         ax_phase.set_ylabel(f"∠$G_{{{out_i+1}{in_i+1}}}$(jω) [deg]")
 
         # Set phase Y-ticks to be multiples of 90 degrees
