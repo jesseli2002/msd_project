@@ -1,0 +1,565 @@
+%% === Controller bank ===
+load('MSD2025_P3_Plant.mat')
+load('MSD2025_P3_Plant.mat')
+load('MSD2025_P3_Signals.mat')
+
+s = tf('s');
+
+C = {};   % cell array
+labels = {};  % legend labels
+
+% ---- Baseline controller ----
+C1 = 2750 / s;
+C2 = (1 / make_double_pole(4610, 0.01)) * make_double_pole(8000, 1);
+C3 = make_notch(6300, 5);
+C4 = make_lpf_butter(28000, 2);
+C5 = make_ll(300*2*pi, 20*pi/180);
+
+C{1} = balreal(ss(C1)*ss(C2)*ss(C3)*ss(C4)*ss(C5));
+labels{1} = 'Original';
+
+% ---- Tuned controller ----
+C_6 = make_PI(1, 2*pi*100);
+C{2} = C{1} * ss(C_6);
+labels{2} = 'PI Adjusted';
+
+% --- Anti-notch -----
+% C_7 = make_PI(1, 2*pi*200);
+% C{3} = C{1} * ss(C_7);
+% labels{3} = 'PI gain 200';
+
+Nc = numel(C);
+% t = ts * (num_samples-1);
+
+% pre-allocate 
+results = struct();
+for i = 1:Nc
+    results(i).Loop   = [];
+    results(i).S      = [];
+    results(i).T      = [];
+    results(i).Hd     = [];
+    results(i).Hn     = [];
+    results(i).e_total = [];
+    results(i).PSD_d  = [];
+    results(i).PSD_n  = [];
+    results(i).PSD_y  = [];
+    results(i).CPS_d  = [];
+    results(i).CPS_n  = [];
+    results(i).CPS_y  = [];
+end
+
+d = d(:); n = n(:);
+
+ts = 30e-6;
+fs = 1.0/ts;
+L = length(d);
+t = (0 : L-1)*ts;
+f = fs*(0:(L/2))/L;
+
+r_a = 10;          % um
+d_a = 20;          % V
+n_a = 0.01;        % 10nm = 0.1um
+
+D = fft(d);
+N = fft(n);
+
+f_b = f(2:end).';
+w_b = 2*pi*f_b;
+
+D_S2 = (1/(fs*L))*abs(D).^2;
+D_S1 = D_S2(1:L/2+1); D_S1(2:end-1) = 2*D_S1(2:end-1);
+D_S1_trimmed = D_S1(2:end).';
+
+N_S2 = (1/(fs*L))*abs(N).^2;
+N_S1 = N_S2(1:L/2+1); N_S1(2:end-1) = 2*N_S1(2:end-1);
+N_S1_trimmed = N_S1(2:end).';
+
+f            = f(:);
+f_b          = f_b(:);
+w_b          = w_b(:);
+D_S1_trimmed = D_S1_trimmed(:);
+N_S1_trimmed = N_S1_trimmed(:);
+
+f_plot = logspace(log10(1e0), log10(1e4), 1000);
+w_plot = 2*pi*f_plot;
+
+%% === Controller sweep ===
+for i = 1:Nc
+    % Loop shaping
+    results(i).Loop = C{i} * G;
+    results(i).S    = feedback(1, results(i).Loop);
+    results(i).T    = feedback(results(i).Loop, results(i).Loop);
+
+    % Transfer paths
+    results(i).Hd = ss(G) * results(i).S;   % y/d
+    results(i).Hn = results(i).S;            % y/n
+
+    % Error budget @ 10 Hz
+    w_a = 2*pi*10;
+    S_mag  = abs(freqresp(results(i).S, w_a));
+    T_mag  = abs(freqresp(results(i).T, w_a));
+    PS_mag = abs(freqresp(G*results(i).S, w_a));
+
+    e_r = S_mag * r_a;
+    e_d = PS_mag * d_a;
+    e_n = T_mag * n_a;
+    results(i).e_total = norm([e_r, e_d, e_n]);
+    fprintf('e_r %d = %.2f nm \n', i, e_r*1000)
+    fprintf('e_d %d = %.2f nm \n', i, e_d*1000)
+    fprintf('e_n %d = %.4f nm \n', i, e_n*1000)    
+    fprintf('e_total %d = %.2f um \n', i, results(i).e_total*1000)
+
+    % Frequency response
+    Hd_mag = abs(squeeze(freqresp(results(i).Hd, w_b)));
+    Hn_mag = abs(squeeze(freqresp(results(i).Hn, w_b)));
+
+    Hd_mag = Hd_mag(:);
+    Hn_mag = Hn_mag(:);
+
+    % PSDs
+    results(i).PSD_d = (Hd_mag.^2) .* D_S1_trimmed;
+    results(i).PSD_n = (Hn_mag.^2) .* N_S1_trimmed;
+    results(i).PSD_y = results(i).PSD_d + results(i).PSD_n;
+
+    % CPS
+    results(i).CPS_d = cumtrapz(f_b, results(i).PSD_d);
+    results(i).CPS_n = cumtrapz(f_b, results(i).PSD_n);
+    results(i).CPS_y = cumtrapz(f_b, results(i).PSD_y);
+    max_var = ;
+
+    fprintf('d %d variance = %.4f um^2, stdev = %.4f \n', i, max(results(i).CPS_y), sqrt(max(results(i).CPS_y)))
+    fprintf('d %d variance = %.4f um^2, stdev = %.4f \n', i, max(results(i).CPS_y), sqrt(max(results(i).CPS_y)))
+    fprintf('d %d variance = %.4f um^2, stdev = %.4f \n', i, max(results(i).CPS_y), sqrt(max(results(i).CPS_y)))
+    fprintf('\n')
+
+end
+
+
+%% A.3 bodeplot Plotting Disturbance Rejection (H_d)
+
+figure(1); clf; hold on;
+h = bodeplot(results(1).Hd, results(2).Hd);
+
+%% A.1 Plotting G, C and Loop
+f_plot = logspace(log10(1e1), log10(10e3), 1000);
+w_plot = 2*pi*f_plot;
+
+figure(1); clf; hold on;
+
+[mag1, phase1] = bode(ss(G), w_plot);
+[mag2, phase2] = bode(C{1}, w_plot);
+[mag3, phase3] = bode(results(1).Loop, w_plot);
+[mag4, phase4] = bode(C{2}, w_plot);
+[mag5, phase5] = bode(results(2).Loop, w_plot);
+
+mag1 = squeeze(mag1); phase1 = squeeze(phase1);
+mag2 = squeeze(mag2); phase2 = squeeze(phase2);
+mag3 = squeeze(mag3); phase3 = squeeze(phase3);
+mag4 = squeeze(mag4); phase4 = squeeze(phase4);
+mag5 = squeeze(mag5); phase5 = squeeze(phase5);
+
+% ---- Magnitude ----
+subplot(2,1,1); 
+set(gca, 'XScale','log','YScale','log'); grid on; hold on;
+semilogx(f_plot, mag1, 'LineWidth', 1.5, 'LineStyle',':');
+semilogx(f_plot, mag2, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, mag3, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, mag4, 'LineWidth', 1.5);
+semilogx(f_plot, mag5, 'LineWidth', 1.5);
+
+
+ylabel('|H_d(j\omega)|');
+legend({'Plant G','Original C','Original Loop (CG)','Adjusted C','Adjusted Loop (CG)'}, 'Location','best');
+
+
+% ---- Phase ----
+subplot(2,1,2);
+set(gca, 'XScale','log','YScale','linear'); grid on; hold on;
+semilogx(f_plot, phase1, 'LineWidth', 1.5, 'LineStyle',':');
+semilogx(f_plot, phase2, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, phase3, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, phase4, 'LineWidth', 1.5);
+semilogx(f_plot, phase5, 'LineWidth', 1.5);
+
+
+xlabel('Frequency [Hz]');
+ylabel('Phase [deg]');
+
+% export
+width = 1000*0.75;
+height = 700*0.75;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigA1.png', 'Resolution', 300);
+
+%% A.2 Plotting Noise Rejection (H_n)
+f_plot = logspace(log10(1e1), log10(1e4), 1000);
+w_plot = 2*pi*f_plot;
+figure(2); clf; hold on;
+
+[mag1, phase1] = bode(results(1).Hn, w_plot);
+[mag2, phase2] = bode(results(2).Hn, w_plot);
+% [mag3, phase3] = bode(results(3).Hn, w_plot);
+
+mag1   = squeeze(mag1);
+mag2   = squeeze(mag2);
+% mag3   = squeeze(mag3);
+phase1 = squeeze(phase1);
+phase2 = squeeze(phase2);
+% phase3 = squeeze(phase3);
+
+% ---- Magnitude ----
+subplot(2,1,1); 
+set(gca, 'XScale','log','YScale','log'); grid on; hold on;
+semilogx(f_plot, mag1, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, mag2, 'LineWidth', 1.5);
+% semilogx(f_plot, mag3, 'LineWidth', 1.5);
+
+ylabel('|H_d(j\omega)|');
+legend(labels, 'Location','best');
+title('Reference Tracking (r to y) or Noise Rejection (n to y)');
+
+% ---- Phase ----
+subplot(2,1,2);
+set(gca, 'XScale','log','YScale','linear'); grid on; hold on;
+semilogx(f_plot, phase1, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, phase2, 'LineWidth', 1.5);
+% semilogx(f_plot, phase3, 'LineWidth', 1.5);
+
+xlabel('Frequency [Hz]');
+ylabel('Phase [deg]');
+
+% export
+width = 1000*0.6;
+height = 700*0.6;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigA2.png', 'Resolution', 300);
+
+%% A.3 Plotting Disturbance Rejection (H_d)
+f_plot = logspace(log10(1e1), log10(1e4), 1000);
+w_plot = 2*pi*f_plot;
+figure(3); clf; hold on;
+
+[mag1, phase1] = bode(results(1).Hd, w_plot);
+[mag2, phase2] = bode(results(2).Hd, w_plot);
+% [mag3, phase3] = bode(results(3).Hd, w_plot);
+
+mag1   = squeeze(mag1);
+mag2   = squeeze(mag2);
+% mag3   = squeeze(mag3);
+phase1 = squeeze(phase1);
+phase2 = squeeze(phase2);
+% phase3 = squeeze(phase3);
+
+% ---- Magnitude ----
+subplot(2,1,1); 
+set(gca, 'XScale','log','YScale','log'); grid on; hold on;
+semilogx(f_plot, mag1, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, mag2, 'LineWidth', 1.5);
+% semilogx(f_plot, mag3, 'LineWidth', 1.5);
+
+ylabel('|H_d(j\omega)|');
+legend(labels, 'Location','best');
+title('Disturbance Path Frequency Response');
+
+% ---- Phase ----
+subplot(2,1,2);
+set(gca, 'XScale','log','YScale','linear'); grid on; hold on;
+semilogx(f_plot, phase1, 'LineWidth', 1.5, 'LineStyle','-.');
+semilogx(f_plot, phase2, 'LineWidth', 1.5);
+% semilogx(f_plot, phase3, 'LineWidth', 1.5);
+
+xlabel('Frequency [Hz]');
+ylabel('Phase [deg]');
+
+width = 1000*0.6;
+height = 700*0.6;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigA3.png', 'Resolution', 300);
+
+%% B.1 Plotting time-domain signals
+
+figure(11); clf; hold on;
+set(gca, 'XScale','linear','YScale','linear'); grid on;
+
+subplot(2,1,1);
+plot(t, d);
+
+title('Time-domain plot of disturbance d')
+xlabel('Time [s]');
+ylabel('Amplitude [V]');
+
+subplot(2,1,2);
+plot(t, n);
+
+title('Time-domain plot of noise n')
+xlabel('Time [s]');
+ylabel('Amplitude [\mum]');
+
+width = 1200;
+height = 700;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigB1.png', 'Resolution', 300);
+
+%% B.1 Plotting frequency domain signals
+% figure(1); clf; hold on;
+% set(gca, 'XScale','log','YScale','linear'); grid on;
+% 
+% f_full = (-L/2:L/2-1).' * (fs / L);
+% semilogy(f_full, D); grid on;
+% xlim([-fs/2 fs/2]);
+
+
+%% B.2 Plotting PSD of signals
+figure(12); clf; hold on;
+set(gca, 'XScale','log','YScale','log'); grid on;
+
+subplot(2,1,1);
+loglog(f, D_S1);
+% loglog(f_b, D_S1_trimmed);
+
+title('Single-sided PSD of disturbance d')
+xlabel('Frequency [Hz]');
+ylabel('PSD_d [V^2/Hz]');
+grid on;
+
+subplot(2,1,2);
+loglog(f, N_S1);
+% loglog(f_b, N_S1_trimmed);
+
+title('Single-sided PSD of noise n')
+xlabel('Frequency [Hz]');
+ylabel('PSD_n [\mum^2/Hz]');
+grid on;
+
+% --- EXPORT ---
+width = 900;
+height = 700;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigB2.png', 'Resolution', 300);
+
+
+%% B.3 Plotting PSD original
+figure(13); clf; hold on;
+set(gca, 'XScale','log','YScale','log'); grid on;
+
+loglog(f_b, results(1).PSD_d, 'LineWidth', 1.5);
+loglog(f_b, results(1).PSD_n, 'LineWidth', 1.5);
+loglog(f_b, results(1).PSD_y, 'LineWidth', 1.5);
+
+xlabel('Frequency [Hz]');
+ylabel('PSD [\mum^2/Hz]');
+legend({'$d \rightarrow y$', '$n \rightarrow y$', 'total'}, ...
+       'Interpreter','latex', 'Location','best');
+grid on;
+title('PSD of output y');
+
+width = 1200*0.5;
+height = 700*0.5;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigB3.png', 'Resolution', 300);
+
+%% B.4 Plotting CPS original
+figure(14); clf; hold on;
+set(gca, 'XScale','log','YScale','linear'); grid on;
+
+semilogx(f_b, results(1).CPS_d, 'LineWidth', 1.5);
+semilogx(f_b, results(1).CPS_n, 'LineWidth', 1.5);
+semilogx(f_b, results(1).CPS_y, 'LineWidth', 1.5);
+
+xlabel('Frequency [Hz]');
+ylabel('Cumulative Power [\mum^2]');
+legend({'$d \rightarrow y$', '$n \rightarrow y$', 'total'}, ...
+       'Interpreter','latex', 'Location','best');
+grid on;
+title('CPS of output y');
+
+width = 1200*0.5;
+height = 700*0.5;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigB4.png', 'Resolution', 300);
+
+%% B.5a Plotting PSD single
+figure(15); clf; hold on;
+set(gca, 'XScale','log','YScale','log'); grid on;
+
+loglog(f_b, results(2).PSD_d, 'LineWidth', 1.5);
+loglog(f_b, results(2).PSD_n, 'LineWidth', 1.5);
+loglog(f_b, results(2).PSD_y, 'LineWidth', 1.5);
+
+xlabel('Frequency [Hz]');
+ylabel('Output PSD [\mum^2/Hz]');
+legend({'adj $d \rightarrow y$', 'adj $n \rightarrow y$', 'adj total'}, ...
+       'Interpreter','latex', 'Location','best');
+grid on;
+title('Adjusted PSD of output y');
+
+width = 1200*0.5;
+height = 700*0.5;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigB5.png', 'Resolution', 300);
+
+%% B.5b Plotting CPS comparison
+figure(16); clf; hold on;
+set(gca, 'XScale','log','YScale','linear'); grid on;
+
+loglog(f_b, results(2).CPS_d, 'LineWidth', 1.5);
+loglog(f_b, results(2).CPS_n, 'LineWidth', 1.5);
+loglog(f_b, results(2).CPS_y, 'LineWidth', 1.5);
+loglog(f_b, results(1).CPS_y, 'LineWidth', 1.5, 'LineStyle','-.');
+
+xlabel('Frequency [Hz]');
+ylabel('Cumulative Power [\mum^2]');
+legend({'adj $d \rightarrow y$', 'adj $n \rightarrow y$', 'adj total','original total'}, ...
+       'Interpreter','latex', 'Location','best');
+grid on;
+title('Adjusted CPS output y');
+width = 1200*0.5;
+height = 700*0.5;
+set(gcf, 'Position', [20, 20, width, height]);
+exportgraphics(gcf, 'FigB6.png', 'Resolution', 300);
+
+%% B.5b Plotting CPS single  ========================== END OF CODE
+figure(6); clf; hold on;
+set(gca, 'XScale','log','YScale','linear'); grid on;
+
+semilogx(f_b, results(2).CPS_d, 'LineWidth', 1.5);
+semilogx(f_b, results(2).CPS_n, 'LineWidth', 1.5);
+semilogx(f_b, results(2).CPS_y, 'LineWidth', 1.5);
+
+xlabel('Frequency [Hz]');
+ylabel('Cumulative Power [\mum^2]');
+legend({'$d \rightarrow y$', '$n \rightarrow y$', 'total'}, ...
+       'Interpreter','latex', 'Location','best');
+grid on;
+title('CPS Comparison');
+
+%% B.5a Plotting PSD comparison
+figure(5); clf; hold on;
+set(gca, 'XScale','log','YScale','log'); grid on;
+
+loglog(f_b, results(2).PSD_d, 'LineWidth', 1.5);
+loglog(f_b, results(2).PSD_n, 'LineWidth', 1.5);
+loglog(f_b, results(2).PSD_y, 'LineWidth', 1.5);
+loglog(f_b, results(1).PSD_y, 'LineWidth', 1.5, 'LineStyle','-.');
+
+xlabel('Frequency [Hz]');
+ylabel('Output PSD [\mum^2/Hz]');
+legend({'adj $d \rightarrow y$', 'adj $n \rightarrow y$', 'adj total','original total'}, ...
+       'Interpreter','latex', 'Location','best');
+grid on;
+title('Output PSD Comparison');
+
+%% Functions
+
+function plot_two_sided_psd(x, fs, signal_name, units)
+%PLOT_TWO_SIDED_PSD Plot two-sided PSD from -Nyquist to +Nyquist
+%
+%   x           : time-domain signal (column or row)
+%   fs          : sampling frequency [Hz]
+%   signal_name : string, e.g. 'd' or 'n'
+%   units       : string, e.g. 'V^2/Hz' or '\mum^2/Hz'
+
+    x = x(:);
+    L = length(x);
+
+    % FFT
+    X = fft(x);
+    X = fftshift(X);
+
+    % Frequency axis
+    f = (-L/2:L/2-1).' * (fs / L);
+
+    % Two-sided PSD
+    PSD = (1/(fs*L)) * abs(X).^2;
+
+    % Plot
+    figure; clf;
+    loglog(abs(f), PSD); grid on;
+
+    xlabel('Frequency [Hz]');
+    ylabel(['PSD [' units ']']);
+    title(['Two-sided PSD of ' signal_name]);
+end
+
+
+
+function C = make_double_pole(omega_n, zeta)
+    C = tf(omega_n^2, [1, 2*zeta*omega_n, omega_n^2]);
+end
+
+
+function C = make_lpf_butter(omega_lpf, order)
+    if nargin < 2
+        order = 2;
+    end
+    [num, den] = butter(order, omega_lpf, 's');
+    C = tf(num, den);
+end
+
+function C = make_notch(omega_n, gain, Q2)
+%MAKE_NOTCH Create a second-order notch filter
+%
+%   omega_n : center frequency [rad/s]
+%   gain    : depth/height of notch (default = 10)
+%   Q2      : pole Q factor (controls width, default = 10)
+%
+%   Higher Q2  -> sharper notch
+%   Higher gain -> deeper notch
+    if nargin < 2
+        gain = 10;
+    end
+    if nargin < 3
+        Q2 = 10;
+    end
+
+    Q1 = gain * Q2;
+    num = [1, omega_n / Q1, omega_n^2];
+    den = [1, omega_n / Q2, omega_n^2];
+    C = tf(num, den);
+end
+
+function C_anti = make_anti_notch(omega_n, gain, Q2)
+%MAKE_ANTI_NOTCH Create an anti-notch filter to boost gain at omega_n
+%
+%   omega_n : center frequency [rad/s]
+%   gain    : depth/height of anti-notch (default = 10)
+%   Q2      : pole Q factor (controls width, default = 10)
+%
+%   Higher gain -> more boost at omega_n
+%   Higher Q2   -> narrower frequency boost
+    if nargin < 2
+        gain = 10;
+    end
+    if nargin < 3
+        Q2 = 10;
+    end
+
+    Q1 = gain * Q2;
+
+    % Swap numerator & denominator of normal notch
+    num = [1, omega_n / Q2, omega_n^2];
+    den = [1, omega_n / Q1, omega_n^2];
+
+    C_anti = tf(num, den);
+end
+
+
+function C = make_ll(omega_ll, phi_m)
+    alpha = (1 - sin(phi_m)) / (1 + sin(phi_m));
+    T = 1 / (omega_ll * sqrt(alpha));
+    C = tf([T, 1], [alpha*T, 1]);
+end
+
+function Cpi = make_PI(Kp, wi)
+%MAKE_PI Create a PI controller
+%
+%   Kp : proportional gain
+%   wi : integrator corner frequency [rad/s]
+
+    if nargin < 2
+        error('Must provide both Kp and wi');
+    end
+
+    % PI transfer function
+    Cpi = tf([Kp, Kp*wi], [1, 0]);   % Kp + Kp*wi/s
+end

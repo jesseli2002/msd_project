@@ -7,9 +7,12 @@ fmin = 10; % Start Frequency (in Hz)
 fmax = 1e4; % Max Frequency in Chirp (in Hz)
 
 fs = 10*fmax; % sampling frequency (in Hz)
-ts = 1.0/fs; % Sampling Time (in seconds)
+ts = 1.0/fs;
 
-totaltime = 5; % in seconds
+%ts = 30e-6; % Sampling Time (in seconds)
+%fs = 1.0/ts;
+
+totaltime = 10; % in seconds
 t = 0:ts:totaltime; % Time vector
 
 % Define the chirp signal
@@ -21,6 +24,25 @@ tmax = t(end); % Time of chirp signal
 method = 'logarithmic'; % or 'logarithmic'
 u = chirp(t, fmin, tmax, fmax, method); % Generate a chirp signal
 
+%% Multi Chirp
+fmin = 10;   
+fmax = 1e4;
+ts = 30e-6;              
+fs = 1/ts;
+
+totaltime = 10;      % total time duration
+t = 0:ts:totaltime;
+
+n_chirp = 1;                                 % number of chirps
+chirp_time = totaltime/n_chirp;              % each chirp duration
+t_single = 0:ts:chirp_time;                  % time for one chirp
+
+method = 'logarithmic';
+u_single = chirp(t_single, fmin, t_single(end), fmax, method);
+
+u = repmat(u_single, 1, n_chirp);            % repeat chirps
+u = u(1:length(t));                          % ensure same length
+
 %% Define the white noise (realisitic with normal distribution)
 vr = 10; % Define variance
 u = sqrt(vr)*randn(length(t),1)'; % Generate white noise with variance = vr
@@ -31,7 +53,7 @@ f_inst = fmin * (fmax/fmin).^(t/tmax);  % logarithmic chirp
 f_boost_start = 2e3;   % 1 kHz
 f_boost_end   = 1e4;   % 10 kHz
 amp_min = 1;           % low-frequency amplitude
-amp_max = 1e3;           % high-frequency amplitude
+amp_max = 1e2;           % high-frequency amplitude
 % hard ramp
 %amp = ones(size(t));          % default 1
 %amp(f_inst > f_boost_start) = amp_max;             % boost 10x for f > 10 kHz
@@ -54,8 +76,8 @@ y = Plant(u, t); % Process the chirp signal through the system
 figure(1);clf(1);
 subplot(2, 1, 1);
 plot(t, u);
-%title(sprintf('Input White Noise Signal, vr = %.1f', vr));
-title(sprintf('Input Chirp Signal, fmin = %d , fmax = %d', fmin, fmax));
+% title(sprintf('Input White Noise Signal, fmin = %d , fmax = %.e, vr = %d', fmin, fmax,vr));
+title(sprintf('Input Chirp Signal, fmin = %d , fmax = %.e', fmin, fmax));
 xlabel('Time (s)');
 ylabel('Amplitude');
 
@@ -68,8 +90,32 @@ ylabel('Amplitude');
 input = u';
 output = y;
 
+%% Hanning Windowed System Identification
+ft = logspace(max(-1,log10(fmin)),max(3,log10(fmax)),1000); % Define frequency vector data set
+% Estimate Frequency Response using tfestimate()
+
+n_win = 1;            
+percent_overlap = 0.5;
+
+win_length = round(length(u)/n_win);
+window = hann(win_length);             % Hann window
+n_overlap = floor(win_length*percent_overlap);        % 50% overlap
+
+[T,f] = tfestimate(input,output,window,n_overlap,ft,fs);
+[C,f] = mscohere(input,output,window,n_overlap,ft,fs);
+  
+figure(2);clf(2);
+subplot(3,1,1);semilogx(f,mag2db(abs(T)));
+title(sprintf('tfestimate from chirp, hanning window, num windows = %d, overlap = %0.2f', n_win, percent_overlap));
+xlabel('Freq [Hz]'); ylabel('|G| [dB]'); grid on; hold on;
+subplot(3,1,2);semilogx(f,rad2deg(angle(T)))
+xlabel('Freq [Hz]'); ylabel('\angleG [dB]'); grid on; hold on;
+subplot(3,1,3);semilogx(f,C)
+xlabel('Freq [Hz]'); ylabel('Coherence'); grid on; hold on;
+%ylim([0.95 1.05]);
+
 %% Regular System Identification
-ft = logspace(max(-1,log10(fmin)),max(4,log10(fmax)),1000); % Define frequency vector data set
+ft = logspace(max(-1,log10(fmin)),max(3,log10(fmax)),1000); % Define frequency vector data set
 % Estimate Frequency Response using tfestimate()
 L = length(u);
 wind = [];% hann(), or rectwin() etc.
@@ -85,8 +131,32 @@ xlabel('Freq [Hz]'); ylabel('\angleG [dB]'); grid on; hold on;
 subplot(3,1,3);semilogx(f,C)
 xlabel('Freq [Hz]'); ylabel('Coherence'); grid on; hold on;
 
-%% Windowed System Identification
-ft = logspace(max(-1,log10(fmin)),max(4,log10(fmax)),1000); % Define frequency vector data set
+%% Rectangular Windowed System Identification
+ft = logspace(max(-1,log10(fmin)),max(3,log10(fmax)),1000); % Define frequency vector data set
+% Estimate Frequency Response using tfestimate()
+
+n_win = 32;
+percent_overlap = 0.5;
+
+win_length = round(length(u)/n_win);
+window = hann(win_length);             % Hann window
+n_overlap = floor(win_length*percent_overlap);        % 50% overlap
+
+[T,f] = tfestimate(input,output,window,n_overlap,ft,fs);
+[C,f] = mscohere(input,output,window,n_overlap,ft,fs);
+  
+figure(2);clf(2);
+subplot(3,1,1);semilogx(f,mag2db(abs(T)));
+title(sprintf('tfestimate, rectangular window, num windows = %d, overlap = %0.2f', n_win, percent_overlap));
+xlabel('Freq [Hz]'); ylabel('|G| [dB]'); grid on; hold on;
+subplot(3,1,2);semilogx(f,rad2deg(angle(T)))
+xlabel('Freq [Hz]'); ylabel('\angleG [dB]'); grid on; hold on;
+subplot(3,1,3);semilogx(f,C)
+xlabel('Freq [Hz]'); ylabel('Coherence'); grid on; hold on;
+
+
+%% OLD Windowed System Identification
+ft = logspace(max(-1,log10(fmin)),max(3,log10(fmax)),1000); % Define frequency vector data set
 % Estimate Frequency Response using tfestimate()
 L = length(u);
 
@@ -118,17 +188,49 @@ data = frd(T,2*pi*f,ts); %Make FRD Data
 % General Configuration: sys = tfest(data,np,nz,iodelay);
 % Important to model delay for controller design
 
-np = 4; % Tune number of poles
+np = 5; % Tune number of poles
 nz = 2; % Tune number of zeros
-iodelay = 1; % Tune delay 
+iodelay = 2e-4; % Tune delay 
 sys = tfest(data,np,nz,iodelay);
 Pnump = sys.Numerator;
 Pdenp = sys.Denominator;
 Ptf = tf(Pnump,Pdenp);
+
+Ptf_del = Ptf;       
+Ptf_del.InputDelay = iodelay;
+
+figure(3); clf;
+h = bodeplot(data,Ptf_del,Ptf);   % overlays original TF, delayed TF and measured FRD
+grid on;
+legend('FRD data input','tfest with delay','tfest without delay');
+%legend('tfest model','tfest + delay','FRD');
+title(sprintf('Bode Plot with Time Delay = %.1e s',iodelay));
+
+%% OLD Continuous Time Transfer Function
+
+% Generate data file to be used in tfest() function
+%data = iddata(output,input,ts); %Make Input-Output Data
+%OR
+data = frd(T,2*pi*f,ts); %Make FRD Data
+
+% Use tfest() function to obtain transfer function from data
+% General Configuration: sys = tfest(data,np,nz,iodelay);
+% Important to model delay for controller design
+
+np = 5; % Tune number of poles
+nz = 2; % Tune number of zeros
+iodelay = 2e-4; % Tune delay 
+sys = tfest(data,np,nz,iodelay);
+Pnump = sys.Numerator;
+Pdenp = sys.Denominator;
+
+Ptf = tf(Pnump,Pdenp);
 figure(3);clf(3);
 bode(Ptf,data) %Plant Transfer Function from Identification
+title('Bode Plot using tfest, from Chirp')
+legend('tfest Model','FRD from Chirp');
 
-%% other thing
+%% thanks GPT
 % 1. Create iddata from time-domain signals
 dataID = iddata(output, input, ts);
 
