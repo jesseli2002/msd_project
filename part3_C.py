@@ -15,6 +15,7 @@ from control_utils import (
     make_notch,
 )
 
+USE_DB_IN_PLOTS = False
 
 class HackedFRD:
     """
@@ -122,8 +123,11 @@ def add_bode_plot(fig, tf: HackedFRD, label):
 
     mag, phase = tf.get_mag_phase()
     mag_db = 20 * np.log10(mag)
-    axm.loglog(freq, np.squeeze(mag), label=label)
-    # axm.semilogx(freq, mag_db, label=label)
+    
+    if USE_DB_IN_PLOTS:
+        axm.semilogx(freq, mag_db, label=label)
+    else:
+        axm.loglog(freq, np.squeeze(mag), label=label)
     axp.semilogx(freq, np.unwrap(np.squeeze(phase)) * 180 / pi)
 
 
@@ -137,8 +141,11 @@ def make_bode_fig_ax(height_ratios=None):
     axp.grid()
     axp.set_xlabel("Frequency [Hz]")
     axp.set_ylabel("Phase [deg]")
-    # axm.set_ylabel("Magnitude [dB]")
-    axm.set_ylabel("Magnitude")
+    if USE_DB_IN_PLOTS:
+        axm.set_ylabel("Magnitude [dB]")
+    else:
+        axm.set_ylabel("Magnitude")
+    fig.set_size_inches(8, 6)
     return fig, ax
 
 
@@ -162,6 +169,16 @@ add_bode_plot(fig, plant, "plant")
 add_bode_plot(fig, loop, "loop")
 axm.legend()
 axm.set_title("Open loop transfer functions")
+plt.show()
+plt.close(fig)
+
+
+fig, (axm, axp) = make_bode_fig_ax()
+add_bode_plot(fig, controller, "controller")
+fig.savefig('img3/C.1.controller_bode.png', bbox_inches='tight')
+plt.close(fig)
+
+
 
 
 # Plot sensitivity ----------------------------
@@ -176,23 +193,29 @@ modulus_margin_db = 20 * np.log10(modulus_margin)
 print(f"max(S(jw)) = {modulus_margin_db=} dB @ w = {HackedFRD.freq_data[np.argmax(mag)]:.1f} Hz")
 
 fig, (axm, axp) = make_bode_fig_ax(height_ratios=[2, 1])
-add_bode_plot(fig, S, 'sensitivity')
-add_bode_plot(fig, T, 'complementary sensitivity')
+add_bode_plot(fig, S, 'Sensitivity S(s)')
+add_bode_plot(fig, T, 'Complementary Sensitivity T(s)')
 fig.set_size_inches(8, 6)
-fig.axes[0].legend(loc='lower left')
-fig.axes[0].set_xlim([20, 2e4])
-fig.axes[0].set_ylim(bottom=1e-8)
-fig.axes[0].set_title(f"Sensitivity functions; max(S(j$\\omega$))={float(modulus_margin_db):.2f} dB @ $\\omega$ = {HackedFRD.freq_data[np.argmax(mag)]:.1f} Hz")
+axm.legend(loc='lower left')
+axm.set_xlim([30, 1e4])
+axm.set_ylim(bottom=1e-4, top=5)
+axp.set_yticks(np.arange(-720, 1, 180))
+axp.set_ylim(bottom=-480)
+axm.set_title(f"Sensitivity functions; max(S(j$\\omega$))={float(modulus_margin_db):.2f} dB @ $\\omega$ = {HackedFRD.freq_data[np.argmax(mag)]:.1f} Hz")
+fig.savefig("img3/C.3.sensitivity.png")
 
 
 # Plot margins ----------------------------
-fig, (axm, axp) = make_bode_fig_ax(height_ratios=[2, 1])
+fig, (axm, axp) = make_bode_fig_ax(height_ratios=[1, 1])
 loop_frd = loop.to_control_frd()
 gm, pm, wg, wp = ct.margin(loop_frd)
 ct.bode_plot(loop_frd, display_margins=True, dB=False, Hz=True, title='')
 fig = plt.gcf()
 fig.axes[0].set_title(f'Gain margin: {20*np.log10(gm):.2f} dB at {wg/(2*pi):.1f} Hz; Phase margin: {pm:.2f}° at {wp/(2*pi):.1f} Hz')
 fig.set_size_inches(8, 6)
+axp.set_ylim(bottom=-720)
+axp.set_xlim([30, 1e4])
+fig.savefig('img3/C.3.margins.png')
 
 
 #  C.2 =================================
@@ -200,5 +223,5 @@ fig.set_size_inches(8, 6)
 #  C.2 =================================
 
 
-plt.show()
+# plt.show()
 plt.close('all')

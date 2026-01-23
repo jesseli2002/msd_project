@@ -89,7 +89,10 @@ feedback_ss = ct.feedback(loop_ss)
 #  Feedforward control ----------------
 omega_lpf = 1000 * 2 * pi
 feedforward_lpf = make_lpf_butter(omega_lpf, order=4)
-feedforward = feedforward_lpf / plant
+# feedforward_lpf = ct.tf([omega_lpf ** 2], [1, 2 * omega_lpf, omega_lpf ** 2])
+# feedforward_lpf = feedforward_lpf * feedforward_lpf  
+feedforward = feedforward_lpf / (plant)
+
 print(f"Feedforward low pass filter: \n{feedforward_lpf}")
 # feedforward = 1/ct.dcgain(plant) * make_notch(4650, gain=40, Q2=1) * make_notch(6300, gain=10, Q2=2.5) * make_lpf_butter(omega_lpf, order=2)
 

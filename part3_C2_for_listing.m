@@ -103,8 +103,7 @@ legend("FB only", "FB + FF sinusoidal gain limited", ...
     "FB + FF worst case limited", "Location", "southeast")
 xlim([0, 0.01])
 % subtitle('')
-title('')
-exportgraphics(gcf, 'img3/C.3.step.png', Units='centimeters', Width=15, Height=8);
+title('Step repsonse')
 
 %% Get step info (printed to consol)
 cl_fb_stepinfo = stepinfo(cl_fb(2, 1))
@@ -125,14 +124,13 @@ bp.YLimits(2) = {[-720, 180]}; % phase plot
 bp.Title.String = "";
 % bp.Subtitle.String = "";
 grid on;
+title('Process sensitivity')
 
-exportgraphics(gcf, 'img3/C.3.process_sensitivity.png', Units='centimeters', Width=15, Height=10);
 
 %% Get process impulse response
 figure;
 impulse(pade(cl_fb_copy(2,2), 6))
-title('')
-exportgraphics(gcf, 'img3/C.3.process_impulse.png', Units='centimeters', Width=15, Height=8);
+title('Impulse response')
 
 %% Functions
 function [sys] = make_double_pole(omega_n, zeta)

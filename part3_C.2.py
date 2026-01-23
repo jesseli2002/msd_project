@@ -20,6 +20,8 @@ from control_utils import (
     make_lpf_butter,
 )
 
+USE_DB_IN_PLOTS = False
+
 mat = loadmat("dat/MSD2025_P2_Plant_numden.mat")
 num = np.squeeze(mat["num"])
 den = np.squeeze(mat["den"])
@@ -81,7 +83,7 @@ for i, tf in enumerate(plant_den_tfs):
 # For feedforward
 omega_lpf = 700 * 2 * pi
 num, den = butter(4, omega_lpf, analog=True, output="ba")
-lpf = ct.tf(num, den)
+lpf_worst = ct.tf(num, den)
 
 omega_zero = float(sqrt(plant_num_tfs[0].den[0][0][0]))
 # feedforward = 1 / plant_dc * plant_den_tfs[0] * plant_den_tfs[1] * plant_den_tfs[2] * make_double_pole(omega_zero, 0.025) * lpf
@@ -92,13 +94,13 @@ feedforward = (
     * plant_den_tfs[1]
     * plant_den_tfs[2]
     * make_double_pole(omega_zero, 0.023)
-    * lpf
+    * lpf_worst
 )
 
 # For max sin feedforward - we can keep most of original system
 omega_lpf = 1000 * 2 * pi
 num, den = butter(4, omega_lpf, analog=True, output="ba")
-lpf = ct.tf(num, den)
+lpf_maxsin = ct.tf(num, den)
 feedforward_sin = (
     1
     / plant_dc
@@ -106,7 +108,7 @@ feedforward_sin = (
     * plant_den_tfs[1]
     * plant_den_tfs[2]
     * make_double_pole(omega_zero, 0.016)
-    * lpf
+    * lpf_maxsin
 )
 
 
@@ -124,8 +126,10 @@ def add_bode_plot(tf, label, fig, freq):
     axm, axp = fig.axes
     mag, phase, _ = ct.frequency_response(tf, omega)
     mag_db = 20 * np.log10(mag)
-    # axm.loglog(omega, np.squeeze(mag), label=label)
-    axm.semilogx(freq, mag_db, label=label)
+    if USE_DB_IN_PLOTS :
+        axm.semilogx(freq, mag_db, label=label)
+    else:
+        axm.loglog(omega, np.squeeze(mag), label=label)
     axp.semilogx(freq, np.unwrap(np.squeeze(phase)) * 180 / pi)
 
 
@@ -144,7 +148,11 @@ axp.set_ylabel("Phase [deg]")
 ylim = axp.get_ylim()  # store so set yticks doesn't affect it
 axp.set_yticks(np.arange(-720, 1, 180))
 axp.set_ylim(ylim)
-axm.set_ylabel("Magnitude [dB]")
+
+if USE_DB_IN_PLOTS:
+    axm.set_ylabel("Magnitude [dB]")
+else:
+    axm.set_ylabel("Magnitude")
 axm.set_xlim([freq[0], freq[-1]])
 
 fig.set_size_inches(8, 6)
@@ -192,3 +200,37 @@ fig.tight_layout()
 fig.savefig("img3/C.2.ff_worst_case.png", bbox_inches="tight")
 
 # plt.show()
+
+# %% Plot prefilter for completeness
+fig, (axm, axp) = plt.subplots(2, 1, sharex=True)
+freq = np.logspace(1, 5, 3600)
+omega = freq * 2 * pi
+DELAY_TIME = 0.18e-3 # 0.18ms
+
+for lpf, label in zip([lpf_maxsin, lpf_worst], [ "Sinusoidal gain limited",  "Worst-case limited"]):
+    mag, phase, _ = ct.frequency_response(lpf, omega)
+    mag_db = 20 * np.log10(mag)
+    if USE_DB_IN_PLOTS :
+        axm.semilogx(freq, mag_db, label=label)
+    else:
+        axm.loglog(freq, np.squeeze(mag), label=label)
+
+    phase = np.unwrap(np.squeeze(phase))
+    delay_phase = omega * DELAY_TIME
+    phase -= delay_phase
+    
+    axp.semilogx(freq, phase * 180 / pi)
+
+axm.legend()
+axm.grid(which="both")
+axp.grid(which="both")
+axp.set_xlabel("Frequency [Hz]")
+axp.set_ylabel("Phase [deg]")
+axp.set_yticks(np.arange(-720, 1, 180))
+axp.set_ylim(-720, 90)
+axp.set_xlim(freq[0], 1e4)
+axm.set_ylim(1e-5, 10**0.5)
+fig.set_size_inches([8, 6])
+fig.savefig('img3/C.3.prefilter.png', bbox_inches='tight')
+
+plt.show()
